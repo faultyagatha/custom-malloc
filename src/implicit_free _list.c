@@ -3,17 +3,6 @@
 #include <assert.h>
 #include <sys/mman.h>
 
-/**
- * Implement implicit free list as malloc (O^n).
- *
- * Plan
- * - include a header struct with size and free flag
- *   as metadata right before the pointer to the data
- * TODO: - grow mapping or add more heaps as needed
- * TODO: - split available blocks
- * TODO: - coallesce adjucent free blocks
- */
-
 /*
 Notes:
 Why (h + 1) Works:
@@ -31,8 +20,19 @@ While we could manually compute the memory location by using ((void *)h + sizeof
 The compiler automatically calculates sizeof(struct header) when performing pointer arithmetic, so there's no need to do it explicitly.
 */
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) || defined(__LP64__)
+#define ALIGNMENT 8
+#else
+#define ALIGNMENT 4
+#endif
+
+// Aligns a size s upwards to the next multiple of ALIGNMENT value
+#define ALIGN(s) (((s) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
+#define HEAP_SIZE (1 << 20)
+
 void *heapStart = NULL;
 void *heapEnd;
+void *heapMax;
 
 // TODO: should be single int with low order bit for
 // freeness information
@@ -40,12 +40,15 @@ void *heapEnd;
 // about the block (its size and whether it’s free).
 struct header
 {
-  unsigned int size;
+  size_t size;
   int free;
 };
 
-void *myAlloc(int size)
+void *myAlloc(size_t size)
 {
+  // Add memory alignment
+  size_t alignedSize = ALIGN(size);
+
   struct header *h;
   // If the heap is not initialised
   if (heapStart == NULL)
@@ -62,6 +65,7 @@ void *myAlloc(int size)
     printf("mmap succeeded, heapStart = %p\n", heapStart);
     // mmap() returns a pointer to the mapped region --> set the heapend
     heapEnd = heapStart;
+    heapMax = (char *)heapStart + HEAP_SIZE;
   }
   // Iterate from the beginning of the heap, checking each header.
   void *p = heapStart;
@@ -70,7 +74,7 @@ void *myAlloc(int size)
     // Cast the header pointer to the current pointer
     h = (struct header *)p;
     // If a block is free and the h->size >= size, use that block.
-    if (h->free && h->size >= size)
+    if (h->free && h->size >= alignedSize)
     {
       h->free = 0;
       // Return a pointer to the usable memory block,
@@ -81,15 +85,22 @@ void *myAlloc(int size)
     p += sizeof(struct header) + h->size;
   }
 
+  // New block allocation:
+  if ((char *)heapEnd + sizeof(struct header) + alignedSize > (char *)heapMax)
+  {
+    // Out of memory
+    return NULL;
+  }
+
   h = (struct header *)heapEnd;
-  h->size = size;
+  h->size = alignedSize;
   h->free = 0;
   // Progress the heapEnd by the size of the header +
   // the size of the block we're allocating
   // - h + 1: skips past the header (struct header)
   // - size: advances by the size of the block being allocated.
   // TODO: check this doesn't extend beyond the end of heap
-  heapEnd = (void *)(h + 1) + size;
+  heapEnd = (void *)(h + 1) + alignedSize;
   // Return a pointer to the usable memory block,
   // which is right after the header (h + 1).
   return (void *)(h + 1);
