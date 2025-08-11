@@ -83,6 +83,105 @@ Characteristics:
 - reduces search time to O(1) or close, since we avoid scanning the whole heap
 - better handling of fragmentation since blocks are grouped by size
 - more complex data structures (multiple lists, pointer management inside blocks).
+
+## Implicit Free List Memory Layout
+
+```c
+1. Allocate 4 bytes:
+
+int *p = myAlloc(4);
+
+Alignment: ALIGN(4) → 8 bytes (on x86_64, ALIGNMENT = 8).
+
+New block added at heapStart.
+
+[HEADER: size=8, free=0] [USER DATA: 8 bytes] ^ heapEnd
+^ heapStart               ^ p returned
+
+Memory (addresses increase →):
+
+0x1000: [size=8] [free=0]     ← struct header (16 bytes)
+0x1010: [int p data]          ← usable memory
+
+2. Allocate 1000 bytes:
+
+char *q = myAlloc(1000);
+
+Alignment: ALIGN(1000) → 1000 rounded up to 1000 (already aligned to 8).
+
+This block goes right after the first.
+
+[HEADER:8,free=0][DATA:8 bytes][HEADER:1000,free=0][DATA:1000 bytes] ^heapEnd
+^ heapStart                                         ^ p returned
+
+3. After freeing the first block:
+myFree(p);
+
+[HEADER:8,free=1][DATA:8 bytes][HEADER:1000,free=0][DATA:1000 bytes]
+
+4. Reusing freed block:
+
+int *r = myAlloc(4);
+
+Linear scan sees first header free=1 and size=8 (fits request).
+
+Reuses it — p and r point to the same address.
+
+[HEADER:8,free=0][DATA:8 bytes][HEADER:1000,free=0][DATA:1000 bytes]
+^ r returned (same as old p)
+
+```
+
+```yaml
+Heap layout:
+
+| header | data (block 1) | header | data (block 2) | header | data (block 3) | ... | heapEnd | free space (heapMax)
+  ^            ^                 ^               ^                 ^                    ^
+heapStart     p                 p+...            p+...            p+...               heapEnd                heapMax
+
+---
+
+Step 1: Start scanning at heapStart
+p = heapStart → points to first block's header
+
+Check if block 1 is free and big enough?
+  - If no → move pointer to next block:
+
+p += sizeof(header) + size_of_block1
+p now points to block 2 header
+
+---
+
+Step 2: Check block 2
+Repeat check
+
+If no:
+p += sizeof(header) + size_of_block2
+p now points to block 3 header
+
+---
+
+Step 3: Check block 3
+Repeat
+
+If no:
+p += sizeof(header) + size_of_block3
+p now == heapEnd
+
+---
+
+Step 4: p == heapEnd
+Means no free block found, and p points exactly to end of allocated heap.
+
+Now we do the check:
+
+if (p + sizeof(header) + alignedSize > heapMax)
+   // Out of memory
+
+Else
+   // Allocate new block here (append)
+```
+
   
 ## TODO
 

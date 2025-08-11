@@ -8,8 +8,8 @@ Notes:
 Why (h + 1) Works:
 Pointer Arithmetic:
 
-In C, adding 1 to a pointer of type struct header * advances the pointer by
-sizeof(struct header) bytes. For example, if struct header is 16 bytes, (h + 1)
+In C, adding 1 to a pointer of type (struct header *) advances the pointer by
+sizeof(struct header) bytes. E.g., if struct header is 16 bytes, (h + 1)
 moves the pointer 16 bytes forward in memory.
 
 Memory Layout:
@@ -23,6 +23,16 @@ sizeof(struct header)), using (h + 1) is simpler, more readable, and less
 error-prone. The compiler automatically calculates sizeof(struct header) when
 performing pointer arithmetic, so there's no need to do it explicitly.
 */
+
+/**
+ * Plan:
+ * - store a header in front of every allocated block with the following info:
+ *    - number of bytes in this block
+ *    - whether the block is free (1) or allocated (0)
+ * - when allocating, walk linearly from heap start to heap end and check
+ * if there is a free block (use block's header) to find a first fit
+ * -
+ */
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) ||          \
     defined(__LP64__)
@@ -74,14 +84,14 @@ void *myAlloc(size_t size) {
   while (p < heapEnd) {
     // Cast the header pointer to the current pointer
     h = (struct header *)p;
-    // If a block is free and the h->size >= size, use that block.
+    // If a block is free and the h->size >= size, reuse that block.
     if (h->free && h->size >= alignedSize) {
       h->free = 0;
       // Return a pointer to the usable memory block,
       // which is right after the header (h + 1).
       return (void *)(h + 1);
     }
-    // If no such blocks, add a new one to end of heap.
+    // If no such blocks, move to the next block.
     p += sizeof(struct header) + h->size;
   }
 
@@ -98,7 +108,6 @@ void *myAlloc(size_t size) {
   // the size of the block we're allocating
   // - h + 1: skips past the header (struct header)
   // - size: advances by the size of the block being allocated.
-  // TODO: check this doesn't extend beyond the end of heap
   heapEnd = (void *)(h + 1) + alignedSize;
   // Return a pointer to the usable memory block,
   // which is right after the header (h + 1).
