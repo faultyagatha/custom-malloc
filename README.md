@@ -23,7 +23,26 @@ The OS provides memory pages in large chunks, malloc manages a heap within that 
 
 ### Common malloc implementation strategies
 
-1. Implicit Free List
+1. Fixed Block Allocator
+- the heap is divided into equal-sized blocks (e.g., 64 bytes each)
+- all allocations return one of these blocks — regardless of how much memory was actually requested
+
+To allocate:
+- keep a list (or bitmap) of free blocks
+- find the first free block and mark it as used.
+
+To free:
+- mark the block as free again
+  
+Characteristics:
+- simple to implement
+- constant time allocation and free
+- no headers before each block
+- no fragmentation within a block - the block size is fixed
+- internal fragmentation: if one requests 5 bytes and the block size is 64 bytes, 59 bytes is wasted
+- cannot efficiently handle variable-sized allocations — either waste space or be forced to split blocks into different pools
+
+2. Implicit Free List
 - the heap is a linear linked list of blocks: each block has a header (metadata) containing size and free/used status
 - the list is traversed sequentially from the start for every allocation or free.
 
@@ -46,7 +65,7 @@ Characteristics:
 - includes a header struct with size and free flag as metadata right before the pointer to the data
 - memory alignment: ensures that allocated memory is aligned to appropriate byte boundaries (usually 4 or 8 bytes depending on the architecture)
 
-2. Segregated Storage (Segregated Free Lists)
+3. Segregated Storage (Segregated Free Lists)
 - instead of a single list, maintain multiple free lists
 - each storing free blocks of a certain size range (e.g., blocks of size 16-31 bytes in list 1, 32-63 in list 2, etc.).
 
