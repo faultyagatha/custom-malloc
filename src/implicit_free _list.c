@@ -28,7 +28,7 @@ The compiler automatically calculates sizeof(struct header) when performing poin
 
 // Aligns a size s upwards to the next multiple of ALIGNMENT value
 #define ALIGN(s) (((s) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
-#define HEAP_SIZE (1 << 20)
+#define HEAP_SIZE (1 << 20) // 1 Mb
 
 void *heapStart = NULL;
 void *heapEnd;
