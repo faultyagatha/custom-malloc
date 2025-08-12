@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 
 /*
@@ -141,7 +142,8 @@ void myFree(void *p) {
     return;
 
   // Check if p is within heap bounds
-  if (p <= (char *)heapStart + sizeof(struct header) || p >= (char *)heapEnd) {
+  if ((char *)p < (char *)heapStart + sizeof(struct header) ||
+      (char *)p >= (char *)heapEnd) {
     alloc_error(ERR_INVALID_FREE, "invalid free pointer");
     return;
   }
