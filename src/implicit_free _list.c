@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -42,12 +43,21 @@ performing pointer arithmetic, so there's no need to do it explicitly.
 #endif
 
 // Aligns a size s upwards to the next multiple of ALIGNMENT value
-#define ALIGN(s) (((s) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
+#define ALIGN(s) (((uintptr_t)(s) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
 #define HEAP_SIZE (1 << 20) // 1 Mb
 
+// Error codes
+#define ERR_NONE 0
+#define ERR_MMAP_FAILED -1
+#define ERR_OUT_OF_MEM -2
+#define ERR_INVALID_FREE -3
+
+// Global error state
+static int last_error = ERR_NONE;
+
 void *heapStart = NULL;
-void *heapEnd;
-void *heapMax;
+void *heapEnd = NULL;
+void *heapMax = NULL;
 
 // TODO: should be single int with low order bit for
 // freeness information
@@ -58,20 +68,31 @@ struct header {
   int free;
 };
 
+// Helper: set error and return NULL
+static void *alloc_error(int code, const char *msg) {
+  last_error = code;
+  if (msg)
+    fprintf(stderr, "Allocator error: %s\n", msg);
+  return NULL;
+}
+
 void *myAlloc(size_t size) {
+  last_error = ERR_NONE;
+
+  if (size == 0)
+    return alloc_error(ERR_OUT_OF_MEM, "Cannot allocate 0 bytes");
+
   // Add memory alignment
   size_t alignedSize = ALIGN(size);
-
   struct header *h;
+
   // If the heap is not initialised
   if (heapStart == NULL) {
     // Allocate a block of memory via mmap and treat it as the heap.
     heapStart = mmap(NULL, HEAP_SIZE, PROT_READ | PROT_WRITE,
-                     MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (heapStart == MAP_FAILED) {
-      // mmap failed; check errno for the specific error
-      perror("mmap failed");
-      exit(1); // Exit with failure
+      return alloc_error(ERR_MMAP_FAILED, strerror(errno));
     }
 
     printf("mmap succeeded, heapStart = %p\n", heapStart);
@@ -95,10 +116,9 @@ void *myAlloc(size_t size) {
     p += sizeof(struct header) + h->size;
   }
 
-  // New block allocation:
+  // Allocate at heap end
   if ((char *)heapEnd + sizeof(struct header) + alignedSize > (char *)heapMax) {
-    // Out of memory
-    return NULL;
+    return alloc_error(ERR_OUT_OF_MEM, "Heap out of memory");
   }
 
   h = (struct header *)heapEnd;
@@ -115,10 +135,19 @@ void *myAlloc(size_t size) {
 }
 
 void myFree(void *p) {
-  // Set the corresponding freeness to 1
-  // TODO: validate p to check that we don't go outside bonds of heap
-  // Go to the actual header location
-  // and set it to free
+  last_error = ERR_NONE;
+
+  if (p == NULL)
+    return;
+
+  // Check if p is within heap bounds
+  if (p <= (char *)heapStart + sizeof(struct header) || p >= (char *)heapEnd) {
+    alloc_error(ERR_INVALID_FREE, "invalid free pointer");
+    return;
+  }
+
+  // Go backwards in memory from the payload pointer to the
+  // header of that block and set it to free
   struct header *h = (struct header *)p - 1;
   h->free = 1;
 }
