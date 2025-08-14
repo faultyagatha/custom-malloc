@@ -185,7 +185,7 @@ Else
   
 ## TODO
 
-- [ ] pack the free flag of the header into the lowest bit of size
+- [X] pack the free flag of the header into the lowest bit of size
 - [X] add memory alignment
 - [ ] grow mapping or add more heaps as needed
 - [ ] split available blocks
